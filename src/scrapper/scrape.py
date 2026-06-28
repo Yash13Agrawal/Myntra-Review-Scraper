@@ -18,6 +18,7 @@ class ScrapeReviews:
         options.add_argument("--no-sandbox")
         options.add_argument("--disable-dev-shm-usage")
         options.add_argument('--headless')
+        options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36")
         
         # Start a new Chrome browser session
         self.driver = webdriver.Chrome(options=options)
@@ -35,6 +36,7 @@ class ScrapeReviews:
             self.driver.get(
                 f"https://www.myntra.com/{search_string}?rawQuery={encoded_query}"
             )
+            time.sleep(3)
             myntra_text = self.driver.page_source
             myntra_html = bs(myntra_text, "html.parser")
             pclass = myntra_html.findAll("ul", {"class": "results-base"})
@@ -56,17 +58,26 @@ class ScrapeReviews:
         try:
             productLink = "https://www.myntra.com/" + product_link
             self.driver.get(productLink)
+            time.sleep(2)
             prodRes = self.driver.page_source
             prodRes_html = bs(prodRes, "html.parser")
             title_h = prodRes_html.findAll("title")
 
-            self.product_title = title_h[0].text
+            if title_h:
+                self.product_title = title_h[0].text
+            else:
+                self.product_title = "Unknown Product"
 
+            self.product_rating_value = "N/A"
             overallRating = prodRes_html.findAll(
                 "div", {"class": "index-overallRating"}
             )
             for i in overallRating:
-                self.product_rating_value = i.find("div").text
+                div_elem = i.find("div")
+                if div_elem:
+                    self.product_rating_value = div_elem.text
+            
+            self.product_price = "N/A"
             price = prodRes_html.findAll("span", {"class": "pdp-price"})
             for i in price:
                 self.product_price = i.text
@@ -200,19 +211,24 @@ class ScrapeReviews:
             review_len = 0
 
 
-            while review_len < self.no_of_products:
+            while review_len < self.no_of_products and review_len < len(product_urls):
                 product_url = product_urls[review_len]
                 review = self.extract_reviews(product_url)
 
                 if review:
                     product_detail = self.extract_products(review)
-                    product_details.append(product_detail)
-
-                    review_len += 1
+                    if product_detail is not None and not product_detail.empty:
+                        product_details.append(product_detail)
+                        review_len += 1
+                    else:
+                        product_urls.pop(review_len)
                 else:
                     product_urls.pop(review_len)
 
             self.driver.quit()
+
+            if not product_details:
+                raise Exception("No reviews could be scraped. This can happen if Myntra blocked the request or no reviews exist for the search query.")
 
             data = pd.concat(product_details, axis=0)
             
