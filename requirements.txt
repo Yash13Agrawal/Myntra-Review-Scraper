@@ -12,4 +12,4 @@ streamlit==1.28.0
 tiktoken==0.4.0
 selenium-wire==5.1.0
 blinker==1.6.1
-setuptools
+setuptools==69.5.1
