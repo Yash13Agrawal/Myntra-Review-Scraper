@@ -1,76 +1,99 @@
 from flask import request
-from seleniumwire import webdriver
-from selenium.webdriver.common.by import By
 from src.exception import CustomException
 from bs4 import BeautifulSoup as bs
 import pandas as pd
 import os, sys
 import time
-from selenium.webdriver.chrome.options import Options
 from urllib.parse import quote
+import requests
+
+
+def _use_api_mode():
+    """Check if we should use ScraperAPI REST mode (for cloud deployment)."""
+    return bool(os.getenv("SCRAPER_API_KEY"))
+
+
+def _fetch_page(url):
+    """Fetch a page using ScraperAPI's REST API with JS rendering."""
+    api_key = os.getenv("SCRAPER_API_KEY")
+    api_url = f"http://api.scraperapi.com?api_key={api_key}&url={quote(url)}&render=true&country_code=in"
+    print(f"DEBUG [API]: Fetching {url} via ScraperAPI...")
+    response = requests.get(api_url, timeout=120)
+    if response.status_code == 200:
+        print(f"DEBUG [API]: Success! Response length: {len(response.text)}")
+        return response.text
+    else:
+        print(f"DEBUG [API]: Failed with status {response.status_code}")
+        return None
 
 
 class ScrapeReviews:
     def __init__(self,
-                 product_name:str,
-                 no_of_products:int):
-        options = Options()
-        options.add_argument("--no-sandbox")
-        options.add_argument("--disable-dev-shm-usage")
-        options.add_argument('--headless=new') # Updated to support extensions in headless
-        options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36")
-        options.add_argument("--window-size=1920,1080")
-        options.add_argument("--disable-blink-features=AutomationControlled")
-        options.add_experimental_option("excludeSwitches", ["enable-automation"])
-        options.add_experimental_option('useAutomationExtension', False)
-        
-        proxy_url = os.getenv("PROXY_URL")
-        print(f"DEBUG: PROXY_URL loaded: {bool(proxy_url)}")
-        
-        sw_options = {}
-        if proxy_url:
-            sw_options = {
-                'proxy': {
-                    'http': proxy_url,
-                    'https': proxy_url,
-                    'no_proxy': 'localhost,127.0.0.1'
-                }
-            }
-        
-        # Start a new Chrome browser session
-        self.driver = webdriver.Chrome(options=options, seleniumwire_options=sw_options)
+                 product_name: str,
+                 no_of_products: int):
 
         self.product_name = product_name
         self.no_of_products = no_of_products
+        self.api_mode = _use_api_mode()
+
+        if not self.api_mode:
+            # Local mode: use Selenium directly (no proxy needed on local machine)
+            from selenium import webdriver
+            from selenium.webdriver.chrome.options import Options
+
+            options = Options()
+            options.add_argument("--no-sandbox")
+            options.add_argument("--disable-dev-shm-usage")
+            options.add_argument('--headless=new')
+            options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36")
+            options.add_argument("--window-size=1920,1080")
+            options.add_argument("--disable-blink-features=AutomationControlled")
+            options.add_experimental_option("excludeSwitches", ["enable-automation"])
+            options.add_experimental_option('useAutomationExtension', False)
+
+            self.driver = webdriver.Chrome(options=options)
+            print("DEBUG: Using Selenium (local mode)")
+        else:
+            self.driver = None
+            print("DEBUG: Using ScraperAPI REST API (cloud mode)")
+
+    def _get_page_source(self, url, wait_time=5):
+        """Get page source using either Selenium or ScraperAPI."""
+        if self.api_mode:
+            html = _fetch_page(url)
+            return html
+        else:
+            self.driver.get(url)
+            time.sleep(wait_time)
+            return self.driver.page_source
 
     def scrape_product_urls(self, product_name):
         try:
-            search_string = product_name.replace(" ","-")
-            # no_of_products = int(self.request.form['prod_no'])
-
+            search_string = product_name.replace(" ", "-")
             encoded_query = quote(search_string)
-            # Navigate to the URL
             url = f"https://www.myntra.com/{search_string}?rawQuery={encoded_query}"
-            self.driver.get(url)
-            time.sleep(15) # Increased sleep for slower cloud containers
-            
-            print(f"DEBUG: Navigated to {url}")
-            print(f"DEBUG: Page Title is '{self.driver.title}'")
-            
-            myntra_text = self.driver.page_source
-            print(f"DEBUG: Page source length: {len(myntra_text)}")
-            
+
+            myntra_text = self._get_page_source(url, wait_time=5)
+
+            if myntra_text is None:
+                print("DEBUG: Failed to fetch search page")
+                return []
+
             myntra_html = bs(myntra_text, "html.parser")
+
+            print(f"DEBUG: Page Title is '{myntra_html.title.text if myntra_html.title else 'N/A'}'")
+            print(f"DEBUG: Page source length: {len(myntra_text)}")
+
             pclass = myntra_html.findAll("ul", {"class": "results-base"})
 
             product_urls = []
             for i in pclass:
                 href = i.find_all("a", href=True)
-
                 for product_no in range(len(href)):
                     t = href[product_no]["href"]
                     product_urls.append(t)
 
+            print(f"DEBUG: Found {len(product_urls)} product URLs")
             return product_urls
 
         except Exception as e:
@@ -79,9 +102,12 @@ class ScrapeReviews:
     def extract_reviews(self, product_link):
         try:
             productLink = "https://www.myntra.com/" + product_link
-            self.driver.get(productLink)
-            time.sleep(5)
-            prodRes = self.driver.page_source
+
+            prodRes = self._get_page_source(productLink, wait_time=5)
+
+            if prodRes is None:
+                return None
+
             prodRes_html = bs(prodRes, "html.parser")
             title_h = prodRes_html.findAll("title")
 
@@ -98,7 +124,7 @@ class ScrapeReviews:
                 div_elem = i.find("div")
                 if div_elem:
                     self.product_rating_value = div_elem.text
-            
+
             self.product_price = "N/A"
             price = prodRes_html.findAll("span", {"class": "pdp-price"})
             for i in price:
@@ -112,43 +138,49 @@ class ScrapeReviews:
             return product_reviews
         except Exception as e:
             raise CustomException(e, sys)
-        
+
     def scroll_to_load_reviews(self):
+        """Only used in Selenium (local) mode."""
+        if not self.driver:
+            return
         # Change the window size to load more data
         self.driver.set_window_size(1920, 1080)
 
         # Get the initial height of the page
         last_height = self.driver.execute_script("return document.body.scrollHeight")
-        
+
         scroll_count = 0
         max_scrolls = 5  # Limit scrolls to prevent hanging on products with thousands of reviews
-        
+
         while scroll_count < max_scrolls:
             # Scroll down by a small amount
             self.driver.execute_script("window.scrollBy(0, 1000);")
             time.sleep(1.5)  # Slightly faster sleep
-            
+
             # Calculate the new height after scrolling
             new_height = self.driver.execute_script("return document.body.scrollHeight")
-            
+
             # Break the loop if no new content is loaded
             if new_height == last_height:
                 break
-            
+
             last_height = new_height
             scroll_count += 1
-
-
 
     def extract_products(self, product_reviews: list):
         try:
             t2 = product_reviews["href"]
             Review_link = "https://www.myntra.com" + t2
-            self.driver.get(Review_link)
-            
-            self.scroll_to_load_reviews()
-            
-            review_page = self.driver.page_source
+
+            if self.api_mode:
+                review_page = self._get_page_source(Review_link)
+            else:
+                self.driver.get(Review_link)
+                self.scroll_to_load_reviews()
+                review_page = self.driver.page_source
+
+            if review_page is None:
+                return None
 
             review_html = bs(review_page, "html.parser")
             review = review_html.findAll(
@@ -216,24 +248,17 @@ class ScrapeReviews:
 
         except Exception as e:
             raise CustomException(e, sys)
-        
-    
+
     def skip_products(self, search_string, no_of_products, skip_index):
         product_urls: list = self.scrape_product_urls(search_string, no_of_products + 1)
-
         product_urls.pop(skip_index)
 
     def get_review_data(self) -> pd.DataFrame:
         try:
-            # search_string = self.request.form["content"].replace(" ", "-")
-            # no_of_products = int(self.request.form["prod_no"])
-
             product_urls = self.scrape_product_urls(product_name=self.product_name)
 
             product_details = []
-
             review_len = 0
-
 
             while review_len < self.no_of_products and review_len < len(product_urls):
                 product_url = product_urls[review_len]
@@ -254,26 +279,25 @@ class ScrapeReviews:
                     print(f"    [Product {review_len + 1}/{self.no_of_products}] No review link found, skipping...")
                     product_urls.pop(review_len)
 
-            self.driver.quit()
+            if self.driver:
+                self.driver.quit()
 
             if not product_details:
                 raise Exception("No reviews could be scraped. This can happen if Myntra blocked the request or no reviews exist for the search query.")
 
             data = pd.concat(product_details, axis=0)
-            
+
             data.to_csv("data.csv", index=False)
-            
+
             return data   # For running Streamlit app, you can return the data as dataframe directly
-                
+
             # For running Flask app, you can return the columns and values separately. Uncomment the following lines:
 
             # columns = data.columns
 
             # values = [[data.loc[i, col] for col in data.columns ] for i in range(len(data)) ]
-            
+
             # return columns, values
-        
-    
 
         except Exception as e:
             raise CustomException(e, sys)
