@@ -8,6 +8,68 @@ import os, sys
 import time
 from selenium.webdriver.chrome.options import Options
 from urllib.parse import quote
+import zipfile
+
+def create_proxy_extension(proxy_host, proxy_port, proxy_username, proxy_password):
+    manifest_json = """
+    {
+        "version": "1.0.0",
+        "manifest_version": 2,
+        "name": "Chrome Proxy",
+        "permissions": [
+            "proxy",
+            "tabs",
+            "unlimitedStorage",
+            "storage",
+            "<all_urls>",
+            "webRequest",
+            "webRequestBlocking"
+        ],
+        "background": {
+            "scripts": ["background.js"]
+        },
+        "minimum_chrome_version":"22.0.0"
+    }
+    """
+
+    background_js = """
+    var config = {
+            mode: "fixed_servers",
+            rules: {
+              singleProxy: {
+                scheme: "http",
+                host: "%s",
+                port: parseInt(%s)
+              },
+              bypassList: ["localhost"]
+            }
+          };
+
+    chrome.proxy.settings.set({value: config, scope: "regular"}, function() {});
+
+    function callbackFn(details) {
+        return {
+            authCredentials: {
+                username: "%s",
+                password: "%s"
+            }
+        };
+    }
+
+    chrome.webRequest.onAuthRequired.addListener(
+                callbackFn,
+                {urls: ["<all_urls>"]},
+                ['blocking']
+    );
+    """ % (proxy_host, proxy_port, proxy_username, proxy_password)
+
+    pluginfile = 'proxy_auth_plugin.zip'
+
+    with zipfile.ZipFile(pluginfile, 'w') as zp:
+        zp.writestr("manifest.json", manifest_json)
+        zp.writestr("background.js", background_js)
+        
+    return pluginfile
 
 
 class ScrapeReviews:
@@ -17,12 +79,22 @@ class ScrapeReviews:
         options = Options()
         options.add_argument("--no-sandbox")
         options.add_argument("--disable-dev-shm-usage")
-        options.add_argument('--headless')
+        options.add_argument('--headless=new') # Updated to support extensions in headless
         options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36")
         options.add_argument("--window-size=1920,1080")
         options.add_argument("--disable-blink-features=AutomationControlled")
         options.add_experimental_option("excludeSwitches", ["enable-automation"])
         options.add_experimental_option('useAutomationExtension', False)
+        
+        # Add ScraperAPI Proxy
+        proxy_plugin = create_proxy_extension(
+            "proxy-server.scraperapi.com",
+            "8001",
+            "scraperapi",
+            "3dd6df6e39358204f3f4118a76e031eb"
+        )
+        options.add_extension(proxy_plugin)
+
         
         # Start a new Chrome browser session
         self.driver = webdriver.Chrome(options=options)
