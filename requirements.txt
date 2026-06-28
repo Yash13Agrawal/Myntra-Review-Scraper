@@ -8,5 +8,6 @@ plotly==5.18.0
 pysocks==1.7.1
 python-dotenv==1.0.1
 selenium==4.15.2
+seleniumbase==4.27.0
 streamlit==1.28.0
 tiktoken==0.4.0

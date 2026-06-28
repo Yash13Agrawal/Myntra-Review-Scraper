@@ -1,12 +1,11 @@
 from flask import request
-from selenium import webdriver
+from seleniumbase import Driver
 from selenium.webdriver.common.by import By
 from src.exception import CustomException
 from bs4 import BeautifulSoup as bs
 import pandas as pd
 import os, sys
 import time
-from selenium.webdriver.chrome.options import Options
 from urllib.parse import quote
 
 
@@ -14,18 +13,8 @@ class ScrapeReviews:
     def __init__(self,
                  product_name:str,
                  no_of_products:int):
-        options = Options()
-        options.add_argument("--no-sandbox")
-        options.add_argument("--disable-dev-shm-usage")
-        options.add_argument('--headless')
-        options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36")
-        options.add_argument("--window-size=1920,1080")
-        options.add_argument("--disable-blink-features=AutomationControlled")
-        options.add_experimental_option("excludeSwitches", ["enable-automation"])
-        options.add_experimental_option('useAutomationExtension', False)
-        
-        # Start a new Chrome browser session
-        self.driver = webdriver.Chrome(options=options)
+        # Start a new Chrome browser session using SeleniumBase in UC mode
+        self.driver = Driver(uc=True, headless=True, no_sandbox=True)
 
         self.product_name = product_name
         self.no_of_products = no_of_products
