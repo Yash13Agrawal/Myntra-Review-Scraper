@@ -102,26 +102,28 @@ class ScrapeReviews:
         
     def scroll_to_load_reviews(self):
         # Change the window size to load more data
-        self.driver.set_window_size(1920, 1080)  # Example window size, adjust as needed
+        self.driver.set_window_size(1920, 1080)
 
         # Get the initial height of the page
         last_height = self.driver.execute_script("return document.body.scrollHeight")
         
-        # Scroll in smaller increments, waiting between scrolls
-        while True:
+        scroll_count = 0
+        max_scrolls = 5  # Limit scrolls to prevent hanging on products with thousands of reviews
+        
+        while scroll_count < max_scrolls:
             # Scroll down by a small amount
             self.driver.execute_script("window.scrollBy(0, 1000);")
-            time.sleep(3)  # Adjust this delay if needed
+            time.sleep(1.5)  # Slightly faster sleep
             
             # Calculate the new height after scrolling
             new_height = self.driver.execute_script("return document.body.scrollHeight")
             
-            # Break the loop if no new content is loaded after scrolling
+            # Break the loop if no new content is loaded
             if new_height == last_height:
                 break
             
-            # Update the last height for the next iteration
             last_height = new_height
+            scroll_count += 1
 
 
 
@@ -222,16 +224,21 @@ class ScrapeReviews:
 
             while review_len < self.no_of_products and review_len < len(product_urls):
                 product_url = product_urls[review_len]
+                print(f"--> [Product {review_len + 1}/{self.no_of_products}] Navigating to product details page...")
                 review = self.extract_reviews(product_url)
 
                 if review:
+                    print(f"    [Product {review_len + 1}/{self.no_of_products}] Extracting reviews and scrolling...")
                     product_detail = self.extract_products(review)
                     if product_detail is not None and not product_detail.empty:
                         product_details.append(product_detail)
                         review_len += 1
+                        print(f"    [Product {review_len + 1}/{self.no_of_products}] Successfully scraped {len(product_detail)} reviews.")
                     else:
+                        print(f"    [Product {review_len + 1}/{self.no_of_products}] No reviews found or extraction failed, skipping...")
                         product_urls.pop(review_len)
                 else:
+                    print(f"    [Product {review_len + 1}/{self.no_of_products}] No review link found, skipping...")
                     product_urls.pop(review_len)
 
             self.driver.quit()
