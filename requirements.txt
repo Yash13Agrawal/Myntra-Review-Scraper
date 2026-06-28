@@ -11,4 +11,7 @@ selenium==4.15.2
 streamlit==1.28.0
 tiktoken==0.4.0
 selenium-wire==5.1.0
+<<<<<<< HEAD
 blinker==1.6.1
+=======
+>>>>>>> ef3e5054d94829a89d1b65c2264df819c3755156
