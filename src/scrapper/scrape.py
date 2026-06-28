@@ -1,5 +1,5 @@
 from flask import request
-from selenium import webdriver
+from seleniumwire import webdriver
 from selenium.webdriver.common.by import By
 from src.exception import CustomException
 from bs4 import BeautifulSoup as bs
@@ -8,68 +8,6 @@ import os, sys
 import time
 from selenium.webdriver.chrome.options import Options
 from urllib.parse import quote
-import zipfile
-
-def create_proxy_extension(proxy_host, proxy_port, proxy_username, proxy_password):
-    manifest_json = """
-    {
-        "version": "1.0.0",
-        "manifest_version": 2,
-        "name": "Chrome Proxy",
-        "permissions": [
-            "proxy",
-            "tabs",
-            "unlimitedStorage",
-            "storage",
-            "<all_urls>",
-            "webRequest",
-            "webRequestBlocking"
-        ],
-        "background": {
-            "scripts": ["background.js"]
-        },
-        "minimum_chrome_version":"22.0.0"
-    }
-    """
-
-    background_js = """
-    var config = {
-            mode: "fixed_servers",
-            rules: {
-              singleProxy: {
-                scheme: "http",
-                host: "%s",
-                port: parseInt(%s)
-              },
-              bypassList: ["localhost"]
-            }
-          };
-
-    chrome.proxy.settings.set({value: config, scope: "regular"}, function() {});
-
-    function callbackFn(details) {
-        return {
-            authCredentials: {
-                username: "%s",
-                password: "%s"
-            }
-        };
-    }
-
-    chrome.webRequest.onAuthRequired.addListener(
-                callbackFn,
-                {urls: ["<all_urls>"]},
-                ['blocking']
-    );
-    """ % (proxy_host, proxy_port, proxy_username, proxy_password)
-
-    pluginfile = 'proxy_auth_plugin.zip'
-
-    with zipfile.ZipFile(pluginfile, 'w') as zp:
-        zp.writestr("manifest.json", manifest_json)
-        zp.writestr("background.js", background_js)
-        
-    return pluginfile
 
 
 class ScrapeReviews:
@@ -86,18 +24,20 @@ class ScrapeReviews:
         options.add_experimental_option("excludeSwitches", ["enable-automation"])
         options.add_experimental_option('useAutomationExtension', False)
         
-        # Add ScraperAPI Proxy
-        proxy_plugin = create_proxy_extension(
-            "proxy-server.scraperapi.com",
-            "8001",
-            "scraperapi",
-            "3dd6df6e39358204f3f4118a76e031eb"
-        )
-        options.add_extension(proxy_plugin)
-
+        proxy_url = os.getenv("PROXY_URL")
+        
+        sw_options = {}
+        if proxy_url:
+            sw_options = {
+                'proxy': {
+                    'http': proxy_url,
+                    'https': proxy_url,
+                    'no_proxy': 'localhost,127.0.0.1'
+                }
+            }
         
         # Start a new Chrome browser session
-        self.driver = webdriver.Chrome(options=options)
+        self.driver = webdriver.Chrome(options=options, seleniumwire_options=sw_options)
 
         self.product_name = product_name
         self.no_of_products = no_of_products
