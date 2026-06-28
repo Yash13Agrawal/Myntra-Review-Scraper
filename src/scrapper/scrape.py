@@ -19,6 +19,10 @@ class ScrapeReviews:
         options.add_argument("--disable-dev-shm-usage")
         options.add_argument('--headless')
         options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36")
+        options.add_argument("--window-size=1920,1080")
+        options.add_argument("--disable-blink-features=AutomationControlled")
+        options.add_experimental_option("excludeSwitches", ["enable-automation"])
+        options.add_experimental_option('useAutomationExtension', False)
         
         # Start a new Chrome browser session
         self.driver = webdriver.Chrome(options=options)
@@ -33,11 +37,16 @@ class ScrapeReviews:
 
             encoded_query = quote(search_string)
             # Navigate to the URL
-            self.driver.get(
-                f"https://www.myntra.com/{search_string}?rawQuery={encoded_query}"
-            )
-            time.sleep(3)
+            url = f"https://www.myntra.com/{search_string}?rawQuery={encoded_query}"
+            self.driver.get(url)
+            time.sleep(5)
+            
+            print(f"DEBUG: Navigated to {url}")
+            print(f"DEBUG: Page Title is '{self.driver.title}'")
+            
             myntra_text = self.driver.page_source
+            print(f"DEBUG: Page source length: {len(myntra_text)}")
+            
             myntra_html = bs(myntra_text, "html.parser")
             pclass = myntra_html.findAll("ul", {"class": "results-base"})
 
