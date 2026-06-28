@@ -25,6 +25,7 @@ class ScrapeReviews:
         options.add_experimental_option('useAutomationExtension', False)
         
         proxy_url = os.getenv("PROXY_URL")
+        print(f"DEBUG: PROXY_URL loaded: {bool(proxy_url)}")
         
         sw_options = {}
         if proxy_url:
@@ -51,7 +52,7 @@ class ScrapeReviews:
             # Navigate to the URL
             url = f"https://www.myntra.com/{search_string}?rawQuery={encoded_query}"
             self.driver.get(url)
-            time.sleep(5)
+            time.sleep(15) # Increased sleep for slower cloud containers
             
             print(f"DEBUG: Navigated to {url}")
             print(f"DEBUG: Page Title is '{self.driver.title}'")
@@ -79,7 +80,7 @@ class ScrapeReviews:
         try:
             productLink = "https://www.myntra.com/" + product_link
             self.driver.get(productLink)
-            time.sleep(2)
+            time.sleep(5)
             prodRes = self.driver.page_source
             prodRes_html = bs(prodRes, "html.parser")
             title_h = prodRes_html.findAll("title")
